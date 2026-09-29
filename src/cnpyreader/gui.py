@@ -8,6 +8,8 @@ from PyQt6.QtGui import QFont, QColor, QAction
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QSplitter, QFileDialog, QMessageBox,
+    QDialog, QDialogButtonBox, QFormLayout, QLineEdit, QSpinBox,
+    QComboBox, QCheckBox, QColorDialog,
 )
 from PyQt6.Qsci import QsciScintilla, QsciLexerPython
 
@@ -27,43 +29,44 @@ class CodeEditor(QsciScintilla):
         self.setFont(font)
         self.setMarginsFont(font)
 
-        # --- 深色主题（One Dark 配色） ---
-        bg_color = QColor("#282C34")
-        fg_color = QColor("#ABB2BF")
-        selection_bg = QColor("#3E4451")
 
-        # 基础编辑器底色和文字
-        self.setColor(fg_color)
-        self.setPaper(bg_color)
-        self.setMarginsBackgroundColor(bg_color)
-        self.setMarginsForegroundColor(QColor("#5C6370"))   # 行号：暗灰色
-        self.setCaretForegroundColor(fg_color)
-        self.setSelectionBackgroundColor(selection_bg)
-        self.setSelectionForegroundColor(fg_color)          # 选中文字保持原色
 
-        # 行号
+        # 行号 margin（跟颜色无关，只设一次）
         self.setMarginType(0, QsciScintilla.MarginType.NumberMargin)
         self.setMarginWidth(0, "00000")
+        
+        # 折叠栏（段落指示条）：在行号右边
+        # margin 1 是符号栏，margin 2 是折叠栏
+        self.setMarginType(1, QsciScintilla.MarginType.SymbolMargin)
+        self.setMarginWidth(1, 0)   # 符号栏先不用
+        # 折叠栏。PyQt6 的 QScintilla 没导出 FoldMargin 枚举，
+        # 但 setFolding 只吃 margin 编号，不吃枚举。
+        # 直接给 margin 2 挂折叠：
+        self.setMarginWidth(2, 14)
+        self.setFolding(QsciScintilla.FoldStyle.PlainFoldStyle, 2)
 
-        # Python 语法高亮（只在左侧英文编辑器用，避免中文被误高亮）
+        # 两侧都挂 lexer：它是唯一能可靠控制文本字体的途径。
+        # 但只有左侧（use_lexer=True）才配置语法高亮颜色。
+        lexer = QsciLexerPython()
+        lexer.setDefaultFont(font)
+        lexer.setDefaultColor(QColor("#ABB2BF"))
+        lexer.setDefaultPaper(QColor("#282C34"))
+        lexer.setFoldComments(True)
+        lexer.setFoldQuotes(False)
+
         if use_lexer:
-            lexer = QsciLexerPython()
-            lexer.setDefaultFont(font)
-            lexer.setDefaultColor(fg_color)
-            lexer.setDefaultPaper(bg_color)
+            lexer.setColor(QColor("#C678DD"), QsciLexerPython.Keyword)
+            lexer.setColor(QColor("#98C379"), QsciLexerPython.DoubleQuotedString)
+            lexer.setColor(QColor("#98C379"), QsciLexerPython.SingleQuotedString)
+            lexer.setColor(QColor("#5C6370"), QsciLexerPython.Comment)
+            lexer.setColor(QColor("#5C6370"), QsciLexerPython.CommentBlock)
+            lexer.setColor(QColor("#D19A66"), QsciLexerPython.Number)
+            lexer.setColor(QColor("#61AFEF"), QsciLexerPython.FunctionMethodName)
+            lexer.setColor(QColor("#61AFEF"), QsciLexerPython.ClassName)
+            lexer.setColor(QColor("#E5C07B"), QsciLexerPython.Decorator)
 
-            # 手动指定 Python 语法元素的颜色（One Dark）
-            lexer.setColor(QColor("#C678DD"), QsciLexerPython.Keyword)              # 关键字：紫
-            lexer.setColor(QColor("#98C379"), QsciLexerPython.DoubleQuotedString)   # 双引号字符串：绿
-            lexer.setColor(QColor("#98C379"), QsciLexerPython.SingleQuotedString)   # 单引号字符串：绿
-            lexer.setColor(QColor("#5C6370"), QsciLexerPython.Comment)              # 注释：灰
-            lexer.setColor(QColor("#5C6370"), QsciLexerPython.CommentBlock)         # 块注释：灰
-            lexer.setColor(QColor("#D19A66"), QsciLexerPython.Number)               # 数字：橙
-            lexer.setColor(QColor("#61AFEF"), QsciLexerPython.FunctionMethodName)   # 函数名：蓝
-            lexer.setColor(QColor("#61AFEF"), QsciLexerPython.ClassName)            # 类名：蓝
-            lexer.setColor(QColor("#E5C07B"), QsciLexerPython.Decorator)            # 装饰器：黄
-
-            self.setLexer(lexer)
+        self.setLexer(lexer)
+        self._lexer = lexer
 
         # 缩进
         self.setIndentationsUseTabs(False)
@@ -77,32 +80,9 @@ class CodeEditor(QsciScintilla):
         self.setUnmatchedBraceForegroundColor(QColor("#E06C75"))
         self.setReadOnly(readonly)
 
-        # 联动高亮：两套 indicator 叠加
-        #   8 = 整行填充底色（StraightBoxIndicator）
-        #   9 = 行内文字变色（TextColorIndicator）
-        # 两者都不和奇偶行底色的 marker 冲突。
-
-        # --- 高亮色 ---
-        # 调试用高对比色：橙红。逻辑确认后改成柔和的蓝灰。
-        fill_color = QColor("#5C2A2A")     # 填充底色：暗红
-        text_color = QColor("#FF8A8A")     # 文字色：亮橙红
-
-        # indicator 8：填充整行
-        self._fill_indicator = 8
-        self.indicatorDefine(
-            QsciScintilla.IndicatorStyle.StraightBoxIndicator,
-            self._fill_indicator,
-        )
-        self.setIndicatorForegroundColor(fill_color, self._fill_indicator)
-        self.setIndicatorDrawUnder(True, self._fill_indicator)
-
-        # indicator 9：文字变色
-        self._text_indicator = 9
-        self.indicatorDefine(
-            QsciScintilla.IndicatorStyle.TextColorIndicator,
-            self._text_indicator,
-        )
-        self.setIndicatorForegroundColor(text_color, self._text_indicator)
+        # 所有 margin 配置好后，再上主题（顺序很重要）
+        self.apply_theme()
+        
     def set_line_colors(self, colors: list):
         """按行号设置整行背景色。
 
@@ -148,6 +128,104 @@ class CodeEditor(QsciScintilla):
         """清除所有联动高亮。"""
         self.clearIndicatorRange(0, 0, self.lines(), 0, self._fill_indicator)
         self.clearIndicatorRange(0, 0, self.lines(), 0, self._text_indicator)
+
+    def apply_theme(self, settings: dict | None = None):
+        """按配置重设颜色和字体。可在运行时随时调用，立即生效。"""
+        from .settings import load_settings
+        from PyQt6.QtGui import QFontDatabase, QPalette
+
+        if settings is None:
+            settings = load_settings()
+
+        # ---- 颜色 ----
+        bg = QColor(settings.get("editor_bg", "#282C34"))
+        fg = QColor(settings.get("editor_fg", "#ABB2BF"))
+        margin_bg = QColor(settings.get("margin_bg", "#353B47"))
+        margin_fg = QColor(settings.get("margin_fg", "#D0D4DC"))
+        sel_bg = QColor("#3E4451")
+
+        # ---- 字体 ----
+        available = QFontDatabase.families()
+        chosen = settings.get("font_family", "Sarasa Mono SC")
+        if chosen not in available:
+            for fb in ["Sarasa Mono SC", "Source Han Sans CN Normal",
+                       "Noto Sans Mono CJK SC", "Microsoft YaHei", "Consolas"]:
+                if fb in available:
+                    chosen = fb
+                    break
+            else:
+                chosen = "Microsoft YaHei"
+
+        font_size = settings.get("font_size", 11)
+        font = QFont(chosen, font_size)
+        font.setFixedPitch(True)
+        self.setFont(font)
+        self.setMarginsFont(font)
+
+        # ---- 编辑器背景和文字 ----
+        self.setColor(fg)
+        self.setPaper(bg)
+        self.setCaretForegroundColor(fg)
+        self.setSelectionBackgroundColor(sel_bg)
+        self.setSelectionForegroundColor(fg)
+        self.setCaretLineBackgroundColor(bg.lighter(115))
+        self.setUnmatchedBraceForegroundColor(QColor("#E06C75"))
+
+        # ---- 更新 lexer（注意：不调用 setLexer！它会重置 margin）----
+        if getattr(self, "_lexer", None) is not None:
+            self._lexer.setDefaultFont(font)
+            self._lexer.setDefaultColor(fg)
+            self._lexer.setDefaultPaper(bg)
+            for style in range(128):
+                self._lexer.setFont(font, style)
+
+        # ---- 高亮 indicator ----
+        fill = QColor(settings.get("highlight_fill", "#2C3E50"))
+        text = QColor(settings.get("highlight_text", "#5DADE2"))
+        if not hasattr(self, "_fill_indicator"):
+            self._fill_indicator = 8
+            self.indicatorDefine(
+                QsciScintilla.IndicatorStyle.StraightBoxIndicator,
+                self._fill_indicator,
+            )
+            self.setIndicatorDrawUnder(True, self._fill_indicator)
+            self._text_indicator = 9
+            self.indicatorDefine(
+                QsciScintilla.IndicatorStyle.TextColorIndicator,
+                self._text_indicator,
+            )
+        self.setIndicatorForegroundColor(fill, self._fill_indicator)
+        self.setIndicatorForegroundColor(text, self._text_indicator)
+
+        # ---- 行号栏（放在最后，保证不被覆盖）----
+        self.setMarginsBackgroundColor(margin_bg)
+        self.setMarginsForegroundColor(margin_fg)
+        # 折叠栏背景也设成同一色（覆盖之前残留的棕色）
+        self.setFoldMarginColors(margin_bg, margin_bg)
+        # 符号栏、折叠栏的底层背景也统一刷一遍
+        for i in range(5):
+            self.SendScintilla(
+                QsciScintilla.SCI_SETMARGINBACKN, i,
+                margin_bg.rgb() & 0xFFFFFF,
+            )
+        style_ln = getattr(QsciScintilla, "STYLE_LINENUMBER", 33)
+        self.SendScintilla(
+            QsciScintilla.SCI_STYLESETFORE, style_ln,
+            margin_fg.rgb() & 0xFFFFFF,
+        )
+        self.SendScintilla(
+            QsciScintilla.SCI_STYLESETBACK, style_ln,
+            margin_bg.rgb() & 0xFFFFFF,
+        )
+
+        # ---- Qt palette（放最后，覆盖 viewport 白边）----
+        pal = self.palette()
+        pal.setColor(QPalette.ColorRole.Base, bg)
+        pal.setColor(QPalette.ColorRole.Window, bg)
+        self.setPalette(pal)
+
+        self.recolor()
+        self.update()
         
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -184,12 +262,22 @@ class MainWindow(QMainWindow):
         self.highlight_btn = QPushButton("高亮：双边")
         self.highlight_btn.clicked.connect(self.on_highlight_clicked)
         tb_layout.addWidget(self.highlight_btn)
+        settings_btn = QPushButton("设置")
+        settings_btn.clicked.connect(self.open_settings)
+        tb_layout.addWidget(settings_btn)
         
         # 主区域：左右两个编辑器
         splitter = QSplitter(Qt.Orientation.Horizontal)
 
+        # 启动时读一次配置，应用到编辑器
+        from .settings import load_settings
+        self._settings = load_settings()
+
         self.left_editor = CodeEditor(readonly=True, use_lexer=True)
         self.right_editor = CodeEditor(readonly=True, use_lexer=False)
+        self.left_editor.apply_theme(self._settings)
+        self.right_editor.apply_theme(self._settings)
+        
         # 滚动同步：任何一边滚动，把另一边也滚到同一行
         self._syncing = False
         self.left_editor.verticalScrollBar().valueChanged.connect(
@@ -305,8 +393,11 @@ class MainWindow(QMainWindow):
 
     # ---- 打开文件 ----
     def open_file(self):
+        from .settings import load_settings
+        default_dir = load_settings().get("default_open_dir", "").strip()
+
         path, _ = QFileDialog.getOpenFileName(
-            self, "打开 Python 文件", "",
+            self, "打开 Python 文件", default_dir,
             "Python 文件 (*.py);;所有文件 (*)"
         )
         if not path:
@@ -314,6 +405,24 @@ class MainWindow(QMainWindow):
         self.current_path = Path(path)
         self.path_label.setText(str(self.current_path))
         self.load_file()
+
+        # 记住用户这次打开文件所在目录，下次默认用它
+        self._remember_last_dir(path)
+
+    def _remember_last_dir(self, file_path: str):
+        """把用户刚刚访问的文件目录记入配置，下次打开对话框默认用它。
+
+        仅在用户没手动设置 default_open_dir 时才自动更新——
+        否则会覆盖用户明确指定的目录。
+        """
+        from .settings import load_settings, save_settings
+        s = load_settings()
+        # 用户明确设过目录 → 不自动覆盖
+        if s.get("default_open_dir", "").strip():
+            return
+        new_dir = str(Path(file_path).parent)
+        s["default_open_dir"] = new_dir
+        save_settings(s)
 
     def load_file(self):
         if self.current_path is None:
@@ -342,26 +451,232 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "翻译失败", str(e))
             return
         self.right_editor.setText(result)
-        self._apply_zebra_stripes()
+        self._apply_background()
 
-    def _apply_zebra_stripes(self):
-        """给左右两个编辑器打奇偶行交替底色，让行行对应更直观。"""
+    def _apply_background(self):
+        """按配置决定是否给左右编辑器打奇偶行底色。"""
+        from .settings import load_settings
+        s = load_settings()
+
+        if not s.get("zebra_stripes", False):
+            # 关掉奇偶 → 把之前画过的 marker 全清掉
+            for ed in (self.left_editor, self.right_editor):
+                for i in range(ed.lines()):
+                    ed.markerDelete(i, 0)
+            return
+
         line_count = max(
             self.left_editor.lines(),
             self.right_editor.lines(),
         )
-        odd_color = QColor("#323842")
-        even_color = None
+        stripe = QColor(s.get("zebra_color", "#323842"))
 
         colors = []
         for i in range(line_count):
-            if i % 2 == 0:
-                colors.append(odd_color)
-            else:
-                colors.append(even_color)
+            colors.append(stripe if i % 2 == 0 else None)
 
         self.left_editor.set_line_colors(colors)
         self.right_editor.set_line_colors(colors)
+
+    def open_settings(self):
+        dlg = SettingsDialog(self)
+        if dlg.exec():
+            # 对话框返回 1（Accepted）：立即应用到两个编辑器
+            from .settings import load_settings
+            s = load_settings()
+            self.left_editor.apply_theme(s)
+            self.right_editor.apply_theme(s)
+            self._apply_background()
+            # 高亮模式也同步
+            self.highlight_mode = s.get("highlight_mode", "both")
+            labels = {
+                "both":  "高亮：双边",
+                "same":  "高亮：单边同侧",
+                "other": "高亮：单边对侧",
+            }
+            self.highlight_btn.setText(labels[self.highlight_mode])
+
+class SettingsDialog(QDialog):
+    """设置对话框：颜色 + 字体 + 奇偶行 + 高亮模式。"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("设置")
+        self.resize(420, 480)
+
+        from .settings import load_settings
+        self.s = load_settings()
+
+        form = QFormLayout(self)
+
+        # 颜色选择按钮：点击弹出取色器
+        self.bg_btn = self._make_color_button("editor_bg")
+        self.fg_btn = self._make_color_button("editor_fg")
+        self.fill_btn = self._make_color_button("highlight_fill")
+        self.text_btn = self._make_color_button("highlight_text")
+        self.zebra_color_btn = self._make_color_button("zebra_color")
+
+        form.addRow("编辑器背景", self.bg_btn)
+        form.addRow("编辑器文字", self.fg_btn)
+        form.addRow("高亮填充色", self.fill_btn)
+        form.addRow("高亮文字色", self.text_btn)
+        form.addRow("奇偶行浅色", self.zebra_color_btn)
+
+        # 编辑器字体：Scintilla 只支持单一字体，中英不分离
+        from PyQt6.QtGui import QFontDatabase
+        families = sorted(QFontDatabase.families())
+
+        self.font_combo = QComboBox()
+        self.font_combo.setEditable(True)
+        self.font_combo.addItems(families)
+        self._select_combo(
+            self.font_combo,
+            self.s.get("font_family", "Sarasa Mono SC")
+        )
+        form.addRow("编辑器字体", self.font_combo)
+
+        self.size_spin = QSpinBox()
+        self.size_spin.setRange(8, 32)
+        self.size_spin.setValue(self.s.get("font_size", 11))
+        form.addRow("字号", self.size_spin)
+        
+        # 默认打开目录
+        dir_row = QWidget()
+        dir_layout = QHBoxLayout(dir_row)
+        dir_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.dir_edit = QLineEdit(self.s.get("default_open_dir", ""))
+        self.dir_edit.setPlaceholderText("留空则自动记住上次打开的目录")
+        dir_layout.addWidget(self.dir_edit, stretch=1)
+
+        browse_btn = QPushButton("浏览…")
+        browse_btn.setFixedWidth(72)
+        browse_btn.clicked.connect(self._pick_dir)
+        dir_layout.addWidget(browse_btn)
+
+        form.addRow("默认打开目录", dir_row)
+
+        # 奇偶行开关
+        self.zebra_cb = QCheckBox("启用奇偶行交替底色")
+        self.zebra_cb.setChecked(self.s.get("zebra_stripes", False))
+        form.addRow("", self.zebra_cb)
+
+        # 高亮模式
+        self.mode_combo = QComboBox()
+        self.mode_combo.addItem("双边", "both")
+        self.mode_combo.addItem("单边同侧", "same")
+        self.mode_combo.addItem("单边对侧", "other")
+        cur_mode = self.s.get("highlight_mode", "both")
+        for i in range(self.mode_combo.count()):
+            if self.mode_combo.itemData(i) == cur_mode:
+                self.mode_combo.setCurrentIndex(i)
+                break
+        form.addRow("高亮模式", self.mode_combo)
+
+        # 底部按钮：恢复默认 + OK + Cancel
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok
+            | QDialogButtonBox.StandardButton.Cancel
+        )
+        reset_btn = buttons.addButton(
+            "恢复默认",
+            QDialogButtonBox.ButtonRole.ResetRole,
+        )
+        reset_btn.clicked.connect(self._restore_defaults)
+
+        buttons.accepted.connect(self.save_and_accept)
+        buttons.rejected.connect(self.reject)
+        form.addRow(buttons)
+
+    def _select_combo(self, combo: QComboBox, value: str):
+        """把下拉框选中到指定值。找不到就设到可编辑文本里。"""
+        idx = combo.findText(value)
+        if idx >= 0:
+            combo.setCurrentIndex(idx)
+        else:
+            combo.setEditText(value)
+
+    def _pick_dir(self):
+        """弹出目录选择框，把选中目录写进输入框。"""
+        current = self.dir_edit.text().strip()
+        chosen = QFileDialog.getExistingDirectory(
+            self, "选择默认打开目录", current
+        )
+        if chosen:
+            self.dir_edit.setText(chosen)
+
+    def _make_color_button(self, key: str) -> QPushButton:
+        """做一个显示当前颜色的按钮，点击弹取色器。统一显示小写。"""
+        btn = QPushButton()
+        hex_lower = self.s.get(key, "#000000").lower()
+        btn.setStyleSheet(
+            f"background-color: {hex_lower}; min-height: 24px;"
+        )
+        btn.setText(hex_lower)
+        btn.clicked.connect(lambda: self._pick_color(key, btn))
+        return btn
+
+    def _pick_color(self, key: str, btn: QPushButton):
+        current = QColor(self.s.get(key, "#000000"))
+        chosen = QColorDialog.getColor(current, self, "选择颜色")
+        if chosen.isValid():
+            hex_lower = chosen.name().lower()
+            self.s[key] = hex_lower
+            btn.setStyleSheet(
+                f"background-color: {hex_lower}; min-height: 24px;"
+            )
+            btn.setText(hex_lower)
+
+    def _restore_defaults(self):
+        """把对话框里所有控件恢复成默认值。不写盘——用户仍需点 OK 才生效。"""
+        from .settings import DEFAULTS
+        d = DEFAULTS
+
+        # 颜色按钮：改回默认色
+        self._set_color_button("editor_bg", self.bg_btn, d["editor_bg"])
+        self._set_color_button("editor_fg", self.fg_btn, d["editor_fg"])
+        self._set_color_button("highlight_fill", self.fill_btn, d["highlight_fill"])
+        self._set_color_button("highlight_text", self.text_btn, d["highlight_text"])
+        self._set_color_button("zebra_color", self.zebra_color_btn, d["zebra_color"])
+
+        # 字体、字号
+        self._select_combo(self.font_combo, d["font_family"])
+        self.size_spin.setValue(d["font_size"])
+
+        # 开关和下拉
+        self.zebra_cb.setChecked(d["zebra_stripes"])
+        for i in range(self.mode_combo.count()):
+            if self.mode_combo.itemData(i) == d["highlight_mode"]:
+                self.mode_combo.setCurrentIndex(i)
+                break
+        # 默认打开目录
+        self.dir_edit.setText(d.get("default_open_dir", ""))
+
+    def _set_color_button(self, key: str, btn: QPushButton, color_hex: str):
+        """把颜色按钮的显示和内部状态改成指定色。统一存小写。"""
+        color_hex = color_hex.lower()
+        self.s[key] = color_hex
+        btn.setStyleSheet(
+            f"background-color: {color_hex}; min-height: 24px;"
+        )
+        btn.setText(color_hex)
+
+    def save_and_accept(self):
+        """把对话框里的值写回配置并保存。"""
+        self.s["font_family"] = (
+            self.font_combo.currentText().strip()
+            or "Sarasa Mono SC"
+        )
+        self.s["font_size"] = self.size_spin.value()
+        self.s["zebra_stripes"] = self.zebra_cb.isChecked()
+        self.s["highlight_mode"] = self.mode_combo.currentData()
+        self.s["default_open_dir"] = self.dir_edit.text().strip()
+
+        from .settings import save_settings
+        if save_settings(self.s):
+            self.accept()
+        else:
+            QMessageBox.warning(self, "保存失败", "无法写入配置文件。")
 
 def main():
     app = QApplication(sys.argv)
