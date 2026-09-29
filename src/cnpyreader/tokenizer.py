@@ -6,44 +6,33 @@ from io import BytesIO
 from .dictionaries import KEYWORDS, BUILTINS, IDENTIFIER_WORDS
 
 
-def _split_identifier(name: str) -> list:
-    """把蛇形或驼峰标识符拆成词列表。
-
-    append_to_message -> ["append", "to", "message"]
-    appendToMessage   -> ["append", "To", "Message"]
-    """
-    words = []
-    for part in name.split("_"):
-        if not part:
-            continue
-        # 处理驼峰
-        buf = ""
-        for ch in part:
-            if ch.isupper() and buf:
-                words.append(buf)
-                buf = ch
-            else:
-                buf += ch
-        if buf:
-            words.append(buf)
-    return words
-
-
 def _translate_identifier(name: str) -> str:
-    """翻译标识符：拆词后逐词查表，查不到的词保留原文。"""
-    words = _split_identifier(name)
-    if not words:
-        return name
-    translated = []
-    for w in words:
-        lower = w.lower()
-        if lower in IDENTIFIER_WORDS:
-            translated.append(IDENTIFIER_WORDS[lower])
-        elif w in IDENTIFIER_WORDS:
-            translated.append(IDENTIFIER_WORDS[w])
-        else:
-            translated.append(w)
-    return "".join(translated)
+    """翻译标识符：拆词后逐词查表，查不到的词保留原文。
+
+    策略（保守）：
+    - 如果标识符里有下划线：拆成词，只有全部词都命中词典时才翻译，
+      并用下划线拼回；任何一个词没命中，整个标识符原样保留。
+    - 如果没有下划线：整个名字小写后查表，命中就翻译，否则原样保留。
+
+    这样不会出现 foo_bar -> foobar 这种吞掉下划线的破坏。
+    """
+    if "_" in name:
+        parts = [p for p in name.split("_") if p]
+        translated = []
+        for p in parts:
+            low = p.lower()
+            if low in IDENTIFIER_WORDS:
+                translated.append(IDENTIFIER_WORDS[low])
+            else:
+                # 有一个词没命中，整个保留，不翻译
+                return name
+        return "_".join(translated)
+
+    # 没有下划线：整个名字查表
+    low = name.lower()
+    if low in IDENTIFIER_WORDS:
+        return IDENTIFIER_WORDS[low]
+    return name
 
 
 def _translate_name(name: str) -> str:
