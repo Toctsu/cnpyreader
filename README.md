@@ -12,13 +12,13 @@
 - 词典外置为 TOML，用户不改源码就能加词
 
 ## 安装
-
+```bash
 pip install -e .
-
+```
 需要 Python 3.9 及以上。Python 3.10 及以下会自动安装 tomli 作为 TOML 解析器。
 
 ## 用法
-
+```bash
 # 英文 -> 中文
 cnpyreader examples/hello.py
 
@@ -27,9 +27,9 @@ cnpyreader my_cn.py --back
 
 # 结果写到文件
 cnpyreader examples/hello.py -o out_cn.py
-
+```
 ## 示例
-
+```python
 输入：
 
 def hello(name):
@@ -37,7 +37,8 @@ def hello(name):
         print("Hello, " + name)
     else:
         print("Hello, world")
-
+```
+```python
 输出：
 
 定义 hello(name):
@@ -45,17 +46,17 @@ def hello(name):
         打印("Hello, " + name)
     否则:
         打印("Hello, world")
-
+```
 ## 自定义词典
 
 用户可以在 ~/.cnpyreader/dictionaries/ 下放自己的 TOML 词表，程序启动时会自动加载，同名键会覆盖内置词表。
 
 示例 ~/.cnpyreader/dictionaries/my.toml：
-
+```toml
 [identifiers]
 hello = "问候"
 my_custom_func = "我的函数"
-
+```
 三个可用的表：
 
 - [keywords]：Python 关键字
