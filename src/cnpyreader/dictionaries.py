@@ -1,6 +1,13 @@
-"""三层词典：关键字、内置名、标识符词表。"""
+"""三层词典：关键字、内置名、标识符词表。
 
-# 第一层：Python 关键字
+正向：英文 -> 中文（用于阅读）
+反向：中文 -> 英文（用于把中文代码翻回可运行的 Python）
+
+反向映射要求中文名唯一，所以词典里不允许出现两个英文词
+映射到同一个中文词。dictionaries 末尾的 _invert 会在冲突时直接报错。
+"""
+
+# ============ 第一层：Python 关键字 ============
 KEYWORDS = {
     "False": "假",
     "None": "空",
@@ -39,7 +46,7 @@ KEYWORDS = {
     "yield": "产出",
 }
 
-# 第二层：常用内置名
+# ============ 第二层：常用内置名 ============
 BUILTINS = {
     "print": "打印",
     "len": "长度",
@@ -79,8 +86,11 @@ BUILTINS = {
     "round": "四舍五入",
 }
 
-# 第三层：标识符拆词词表（用于蛇形/驼峰拆分后逐词翻译）
+# ============ 第三层：标识符拆词词表 ============
+# 注意：中文名必须唯一。缩写和全称要用不同的中文名，
+# 比如 message / msg 不能都叫"消息"。
 IDENTIFIER_WORDS = {
+    # 动词
     "get": "获取",
     "set": "设置",
     "add": "添加",
@@ -99,18 +109,59 @@ IDENTIFIER_WORDS = {
     "run": "运行",
     "init": "初始化",
     "main": "主",
+    "build": "构建",
+    "parse": "解析",
+    "render": "渲染",
+    "check": "检查",
+    "find": "查找",
+    "search": "搜索",
+    "send": "发送",
+    "receive": "接收",
+    "push": "推送",
+    "pull": "拉取",
+
+    # 名词：消息类
     "message": "消息全称",
     "msg": "消息",
+    "information": "信息全称",
     "info": "信息",
-    "error": "错误",
+    "error": "错误全称",
+    "err": "错误",
     "warning": "警告",
     "debug": "调试",
+    "notice": "通知",
+    "alert": "警报",
+
+    # 名词：配置类
+    "config": "配置全称",
+    "cfg": "配置",
+    "settings": "设置",
+    "option": "选项",
+    "optionals": "可选项",
+    "default": "默认",
+    "current": "当前",
+    "new": "新",
+    "old": "旧",
+
+    # 名词：人 / 对象
     "user": "用户",
     "name": "名字",
+    "title": "标题",
+    "author": "作者",
+    "owner": "所有者",
+    "self": "自身",
+    "this": "这个",
+    "that": "那个",
+
+    # 名词：文件 / 路径
     "path": "路径",
     "file": "文件",
     "dir": "目录",
     "folder": "文件夹",
+    "filename": "文件名",
+    "dirname": "目录名",
+
+    # 名词：数据
     "text": "文本",
     "content": "内容",
     "data": "数据",
@@ -129,13 +180,8 @@ IDENTIFIER_WORDS = {
     "color": "颜色",
     "theme": "主题",
     "font": "字体",
-    "config": "配置",
-    "settings": "设置",
-    "option": "选项",
-    "default": "默认",
-    "current": "当前",
-    "new": "新",
-    "old": "旧",
+
+    # 介词 / 连词 / 助词
     "to": "到",
     "from": "从",
     "in": "在",
@@ -146,9 +192,6 @@ IDENTIFIER_WORDS = {
     "has": "有",
     "can": "可以",
     "should": "应该",
-    "self": "自身",
-    "this": "这个",
-    "that": "那个",
     "all": "全部",
     "any": "任意",
     "none": "无",
@@ -169,3 +212,30 @@ IDENTIFIER_WORDS = {
     "first": "第一个",
     "last": "最后一个",
 }
+
+
+# ============ 反向词典（中文 -> 英文）============
+# 正向允许多对一（message 和 msg 都叫"消息"），
+# 反向只保留"全称"作为还原目标，缩写不参与反向。
+# 所以反向词典的构造方式是：取每个中文名第一次出现（也就是
+# 词典书写顺序里靠前的那个英文词）作为它的英文还原目标。
+# 使用者在写词典时，应把全称写在缩写前面，例如先写 message 再写 msg。
+
+def _invert(d):
+    """把 {英文: 中文} 翻成 {中文: 英文}。
+
+    允许多对一：多个英文词可以映射到同一个中文词。
+    反向时取"第一次出现"的英文词作为还原目标，
+    所以词典里应把全称写在缩写前面。
+    """
+    result = {}
+    for en, cn in d.items():
+        if cn not in result:
+            result[cn] = en
+        # 已经有映射了，跳过（缩写不覆盖全称）
+    return result
+
+
+REVERSE_KEYWORDS = _invert(KEYWORDS)
+REVERSE_BUILTINS = _invert(BUILTINS)
+REVERSE_IDENTIFIER_WORDS = _invert(IDENTIFIER_WORDS)
