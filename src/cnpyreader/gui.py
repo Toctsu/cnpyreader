@@ -87,8 +87,8 @@ class CodeEditor(QsciScintilla):
         self.setMouseTracking(True)
         self._hover_tip = None
 
-        # 触发键（默认 Alt）
-        self._hover_key = Qt.KeyboardModifier.AltModifier
+        # 触发键（默认Shift）
+        self._hover_key = Qt.KeyboardModifier.ShiftModifier
         self._last_hover_word = None   # 用于抑制重复打印
 
         # 悬停词的 indicator（用 10 号，避开已用的 8、9）
@@ -197,7 +197,7 @@ class CodeEditor(QsciScintilla):
 
     def keyReleaseEvent(self, event):
         # 松开触发键 → 收气泡
-        if event.key() == Qt.Key.Key_Alt:
+        if event.key() == Qt.Key.Key_Shift:
             self._hide_hover_tip()
         super().keyReleaseEvent(event)
 
