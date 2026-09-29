@@ -31,3 +31,22 @@ def test_unknown_identifier_kept():
     src = "foo_bar = 1\n"
     out = translate_source(src)
     assert "foo_bar" in out
+
+def test_full_roundtrip():
+    """英文源码 -> 中文代码 -> 英文源码，关键部分应完整还原。"""
+    from cnpyreader.tokenizer import translate_source, translate_back
+
+    src = (
+        "def hello(name):\n"
+        "    if name:\n"
+        "        print(\"Hello, \" + name)\n"
+        "    else:\n"
+        "        print(\"Hello, world\")\n"
+    )
+    cn = translate_source(src)
+    back = translate_back(cn)
+
+    assert "def hello(name):" in back
+    assert "if name:" in back
+    assert "print(" in back
+    assert "else:" in back

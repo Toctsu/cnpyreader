@@ -56,3 +56,47 @@ def translate_source(source: str) -> str:
                 )
         tokens.append(tok)
     return tokenize.untokenize(tokens).decode("utf-8")
+
+
+def _translate_back_name(name: str) -> str:
+    """把一个名字从中文翻回英文。
+
+    顺序：关键字 -> 内置 -> 标识符词表。
+    标识符层按 '_' 拆词逐段翻，未命中的段原样保留。
+    """
+    from .dictionaries import (
+        REVERSE_KEYWORDS, REVERSE_BUILTINS, REVERSE_IDENTIFIER_WORDS,
+    )
+
+    if name in REVERSE_KEYWORDS:
+        return REVERSE_KEYWORDS[name]
+    if name in REVERSE_BUILTINS:
+        return REVERSE_BUILTINS[name]
+
+    if "_" in name:
+        parts = [p for p in name.split("_") if p]
+        out = []
+        for p in parts:
+            if p in REVERSE_IDENTIFIER_WORDS:
+                out.append(REVERSE_IDENTIFIER_WORDS[p])
+            else:
+                out.append(p)
+        return "_".join(out)
+
+    if name in REVERSE_IDENTIFIER_WORDS:
+        return REVERSE_IDENTIFIER_WORDS[name]
+    return name
+
+
+def translate_back(source: str) -> str:
+    """把中文代码翻译回 Python 英文源码。"""
+    tokens = []
+    for tok in tokenize.tokenize(BytesIO(source.encode("utf-8")).readline):
+        if tok.type == tokenize.NAME:
+            new_name = _translate_back_name(tok.string)
+            if new_name != tok.string:
+                tok = tokenize.TokenInfo(
+                    tok.type, new_name, tok.start, tok.end, tok.line
+                )
+        tokens.append(tok)
+    return tokenize.untokenize(tokens).decode("utf-8")
