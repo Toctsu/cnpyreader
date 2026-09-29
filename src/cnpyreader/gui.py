@@ -247,14 +247,6 @@ class CodeEditor(QsciScintilla):
         pal.setColor(QPalette.ColorRole.Window, bg)
         self.setPalette(pal)
 
-        print("margin_bg =", margin_bg.name(),
-              "margin_fg =", margin_fg.name(),
-              "fold_bg =", fold_bg.name(),
-              "style_ln back =",
-              QColor(self.SendScintilla(
-                  QsciScintilla.SCI_STYLEGETBACK, style_ln)).name())
-
-
         # 控件最外层边框（红框那条）：用 QSS 设成编辑器底色
         self.setStyleSheet(f"""
             QsciScintilla {{
@@ -264,7 +256,7 @@ class CodeEditor(QsciScintilla):
         """)
 
         self.recolor()
-        self    .update()
+        self.update()
 
       
 class MainWindow(QMainWindow):

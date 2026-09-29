@@ -7,4 +7,5 @@ venv/
 dist/
 build/
 .idea/
-.vscode/
+.vscode/.pytest_cache/
+__pycache__/
