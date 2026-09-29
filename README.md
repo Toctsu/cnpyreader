@@ -29,18 +29,18 @@ cnpyreader my_cn.py --back
 cnpyreader examples/hello.py -o out_cn.py
 ```
 ## 示例
-```python
-输入：
 
+输入：
+```python
 def hello(name):
     if name:
         print("Hello, " + name)
     else:
         print("Hello, world")
 ```
-```python
-输出：
 
+输出：
+```python
 定义 hello(name):
     如果 name:
         打印("Hello, " + name)
