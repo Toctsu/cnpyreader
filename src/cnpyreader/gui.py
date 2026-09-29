@@ -42,7 +42,8 @@ class CodeEditor(QsciScintilla):
         # 折叠栏。PyQt6 的 QScintilla 没导出 FoldMargin 枚举，
         # 但 setFolding 只吃 margin 编号，不吃枚举。
         # 直接给 margin 2 挂折叠：
-        self.setMarginWidth(2, 0)   # 折叠栏关掉
+        self.setMarginWidth(2, 14)
+        self.setFolding(QsciScintilla.FoldStyle.PlainFoldStyle, 2)
 
         # 两侧都挂 lexer：它是唯一能可靠控制文本字体的途径。
         # 但只有左侧（use_lexer=True）才配置语法高亮颜色。
@@ -564,7 +565,7 @@ class SettingsDialog(QDialog):
         form.addRow("行号栏背景", self.margin_bg_btn)
         form.addRow("行号栏文字", self.margin_fg_btn)
         form.addRow("折叠栏背景", self.fold_bg_btn)
-        form.addRow("折叠栏符号", self.fold_fg_btn)
+        form.addRow("折叠栏线色", self.fold_fg_btn)
         form.addRow("高亮填充色", self.fill_btn)
         form.addRow("高亮文字色", self.text_btn)
         form.addRow("奇偶行浅色", self.zebra_color_btn)
