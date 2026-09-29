@@ -17,7 +17,9 @@ classifiers = [
     "Natural Language :: Chinese (Simplified)",
 ]
 dependencies = [
-    "mcp>=1.0,<2",
+    "mcp>=1.0",
+    "PyQt6>=6.5",
+    "PyQt6-QScintilla>=2.14",
     "tomli>=2.0; python_version < '3.11'",
 ]
 
@@ -25,6 +27,7 @@ dependencies = [
 [project.scripts]
 cnpyreader = "cnpyreader.cli:main"
 cnpyreader-mcp = "cnpyreader.mcp_server:main"
+cnpyreader-gui = "cnpyreader.gui:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
