@@ -82,7 +82,168 @@ class CodeEditor(QsciScintilla):
 
         # 所有 margin 配置好后，再上主题（顺序很重要）
         self.apply_theme()
-        
+
+        # ---- 悬停气泡 ----
+        self.setMouseTracking(True)
+        self._hover_tip = None
+
+        # 触发键（默认 Alt）
+        self._hover_key = Qt.KeyboardModifier.AltModifier
+        self._last_hover_word = None   # 用于抑制重复打印
+
+        # 悬停词的 indicator（用 10 号，避开已用的 8、9）
+        self._hover_indicator = 10
+        self.indicatorDefine(
+            QsciScintilla.IndicatorStyle.StraightBoxIndicator,
+            self._hover_indicator,
+        )
+        self.setIndicatorForegroundColor(
+            QColor("#5DADE2"), self._hover_indicator
+        )
+        self.setIndicatorDrawUnder(True, self._hover_indicator)
+
+        # 载入术语表（可能为空，不影响运行）
+        try:
+            from .dictionaries import EXPLANATIONS
+            self._explanations = EXPLANATIONS
+        except Exception as e:
+            print(f"[悬停] 术语表载入失败：{e}")
+            self._explanations = {}
+
+    def set_hover_key(self, modifier):
+        """设置触发气泡的修饰键。"""
+        self._hover_key = modifier
+
+    def mouseMoveEvent(self, event):
+        """鼠标移动：按住 Alt 时，取词弹出气泡，并高亮该词。"""
+        super().mouseMoveEvent(event)
+
+        from PyQt6.QtWidgets import QApplication
+        mods = QApplication.keyboardModifiers()
+
+        # 没按触发键 → 清掉高亮、收气泡
+        if not (mods & self._hover_key):
+            self._clear_hover_state()
+            return
+
+        # ---- 坐标转换 ----
+        pt = event.position().toPoint()
+
+        # 把 widget 坐标转到 viewport 坐标——
+        # viewport 就是文本区，坐标原点在文本区左上角
+        vp_pt = self.viewport().mapFrom(self, pt)
+        x = vp_pt.x()
+        y = vp_pt.y()
+
+        pos = self.SendScintilla(
+            QsciScintilla.SCI_POSITIONFROMPOINTCLOSE, x, y,
+        )
+        if pos < 0:
+            self._clear_hover_state()
+            return
+
+        # ---- 字节位置 → 行列 ----
+        line = self.SendScintilla(QsciScintilla.SCI_LINEFROMPOSITION, pos)
+        col = self.SendScintilla(QsciScintilla.SCI_GETCOLUMN, pos)
+
+        # ---- 取词（用自己写的 _word_at）----
+        word = self._word_at(line, col)
+        if not word:
+            self._clear_hover_state()
+            return
+
+        # ---- 算词的首尾列 ----
+        text_line = self.text(line)
+        left = col
+        while left > 0 and (text_line[left - 1].isalnum()
+                            or text_line[left - 1] == "_"):
+            left -= 1
+        right = col
+        while right < len(text_line) and (text_line[right].isalnum()
+                                          or text_line[right] == "_"):
+            right += 1
+
+        line_start = self.SendScintilla(
+            QsciScintilla.SCI_POSITIONFROMLINE, line,
+        )
+        word_start = line_start + left
+        word_end = line_start + right
+
+        # ---- 只在词变化时打印 ----
+        if word != self._last_hover_word:
+            print(f"[悬停] 取到词 = {word!r}")
+            self._last_hover_word = word
+
+        # ---- 查解释 ----
+        explanation = self._explanations.get(word)
+        if explanation is None:
+            explanation = self._explanations.get(word.lower())
+        if not explanation:
+            self._clear_hover_state()
+            return
+
+        # ---- 高亮这个词 ----
+        self._highlight_hover_word(word_start, word_end)
+
+        # ---- 弹气泡 ----
+        if self._hover_tip is None:
+            from .hover_tip import HoverTip
+            self._hover_tip = HoverTip(self)
+        self._hover_tip.show_text(f"{word}：{explanation}")
+
+    def leaveEvent(self, event):
+        self._clear_hover_state()
+        super().leaveEvent(event)
+
+    def keyReleaseEvent(self, event):
+        # 松开触发键 → 收气泡
+        if event.key() == Qt.Key.Key_Alt:
+            self._hide_hover_tip()
+        super().keyReleaseEvent(event)
+
+    def _hide_hover_tip(self):
+        if self._hover_tip is not None:
+            self._hover_tip.hide()
+
+    def _highlight_hover_word(self, start: int, end: int):
+        """把 [start, end) 这个字符范围高亮成悬浮选中。"""
+        # 先清掉旧的
+        self.clearIndicatorRange(
+            0, 0, self.lines(), 0, self._hover_indicator
+        )
+        # 字节位置转成行列
+        line_a, col_a = self.lineIndexFromPosition(start)
+        line_b, col_b = self.lineIndexFromPosition(end)
+        # 填充
+        self.fillIndicatorRange(
+            line_a, col_a, line_b, col_b, self._hover_indicator
+        )
+
+    def _clear_hover_state(self):
+        """清掉悬浮高亮和气泡。"""
+        self.clearIndicatorRange(
+            0, 0, self.lines(), 0, self._hover_indicator
+        )
+        self._hide_hover_tip()
+
+    def _word_at(self, line: int, col: int):
+        """取第 line 行、第 col 列位置的完整词。"""
+        if not (0 <= line < self.lines()):
+            return None
+        text = self.text(line)
+        if not (0 <= col < len(text)):
+            return None
+        # 从 col 往两边扩，取 \w 组成的词
+        import re
+        left = col
+        while left > 0 and re.match(r"\w", text[left - 1]):
+            left -= 1
+        right = col
+        while right < len(text) and re.match(r"\w", text[right]):
+            right += 1
+        word = text[left:right]
+        return word if word else None
+       
     def set_line_colors(self, colors: list):
         """按行号设置整行背景色。
 
@@ -199,38 +360,14 @@ class CodeEditor(QsciScintilla):
         self.setIndicatorForegroundColor(fill, self._fill_indicator)
         self.setIndicatorForegroundColor(text, self._text_indicator)
 
-        # ---- 行号栏（margin 0）：用 margin_bg / margin_fg ----
-        self.setMarginsBackgroundColor(margin_bg)
-        self.setMarginsForegroundColor(margin_fg)
-
-        # ---- 折叠栏（margin 2）：用 fold_bg / fold_fg ----
-        # setFoldMarginColors(前景/线色, 背景色)
-        self.setFoldMarginColors(fold_fg, fold_bg)
-
-        # 逐个 margin 刷底层背景，防止宽度 0 的 margin 露边：
-        #   margin 0 行号栏 → margin_bg
-        #   margin 1 符号栏 → margin_bg
-        #   margin 2 折叠栏 → fold_bg
-        #   margin 3/4      → margin_bg
-        self.SendScintilla(
-            QsciScintilla.SCI_SETMARGINBACKN, 0,
-            margin_bg.rgb() & 0xFFFFFF,
-        )
-        self.SendScintilla(
-            QsciScintilla.SCI_SETMARGINBACKN, 1,
-            margin_bg.rgb() & 0xFFFFFF,
-        )
-        self.SendScintilla(
-            QsciScintilla.SCI_SETMARGINBACKN, 2,
-            fold_bg.rgb() & 0xFFFFFF,
-        )
-        for i in (3, 4):
+        # ---- 行号栏：背景 margin_bg、数字 margin_fg ----
+        # 逐个 margin 设背景（0 行号、1 符号、3/4 预留 都用 margin_bg）
+        for i in (0, 1, 3, 4):
             self.SendScintilla(
                 QsciScintilla.SCI_SETMARGINBACKN, i,
                 margin_bg.rgb() & 0xFFFFFF,
             )
-
-        # 行号文字走 STYLE_LINENUMBER
+        # 行号数字颜色和背景走 STYLE_LINENUMBER
         style_ln = getattr(QsciScintilla, "STYLE_LINENUMBER", 33)
         self.SendScintilla(
             QsciScintilla.SCI_STYLESETFORE, style_ln,
@@ -240,6 +377,13 @@ class CodeEditor(QsciScintilla):
             QsciScintilla.SCI_STYLESETBACK, style_ln,
             margin_bg.rgb() & 0xFFFFFF,
         )
+
+        # ---- 折叠栏（margin 2）：背景 fold_bg、线色/图标 fold_fg ----
+        self.SendScintilla(
+            QsciScintilla.SCI_SETMARGINBACKN, 2,
+            fold_bg.rgb() & 0xFFFFFF,
+        )
+        self.setFoldMarginColors(fold_fg, fold_bg)
 
         # ---- Qt palette（放最后，覆盖 viewport 白边）----
         pal = self.palette()

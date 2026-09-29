@@ -6,33 +6,57 @@ from io import BytesIO
 from .dictionaries import KEYWORDS, BUILTINS, IDENTIFIER_WORDS
 
 
-def _translate_identifier(name: str) -> str:
-    """翻译标识符：拆词后逐词查表，查不到的词保留原文。
+def _split_camel(part: str):
+    """把驼峰词拆成小段。getLogger -> ["get", "Logger"]。
 
-    策略（保守）：
-    - 如果标识符里有下划线：拆成词，只有全部词都命中词典时才翻译，
-      并用下划线拼回；任何一个词没命中，整个标识符原样保留。
-    - 如果没有下划线：整个名字小写后查表，命中就翻译，否则原样保留。
-
-    这样不会出现 foo_bar -> foobar 这种吞掉下划线的破坏。
+    规则：
+    - 全大写（如 ERROR、HTTP）不拆，整词保留
+    - 全小写（如 logger）不拆
+    - 混合（如 getLogger）按大写边界拆
     """
-    if "_" in name:
-        parts = [p for p in name.split("_") if p]
-        translated = []
-        for p in parts:
-            low = p.lower()
-            if low in IDENTIFIER_WORDS:
-                translated.append(IDENTIFIER_WORDS[low])
-            else:
-                # 有一个词没命中，整个保留，不翻译
-                return name
-        return "_".join(translated)
+    if not part:
+        return []
+    # 全大写或全小写：不拆
+    if part.isupper() or part.islower():
+        return [part]
 
-    # 没有下划线：整个名字查表
-    low = name.lower()
-    if low in IDENTIFIER_WORDS:
-        return IDENTIFIER_WORDS[low]
-    return name
+    words = []
+    buf = ""
+    for ch in part:
+        if ch.isupper() and buf:
+            words.append(buf)
+            buf = ch
+        else:
+            buf += ch
+    if buf:
+        words.append(buf)
+    return words
+
+
+def _translate_identifier(name: str) -> str:
+    """翻译标识符：按 '_' 和驼峰拆词，逐词查表，未命中的词原样保留。
+
+    策略：部分命中时，命中的翻、未命中的留英文，用 '_' 拼回。
+    这样 get_user_unknown -> 获取_用户_unknown，比整个保留更有信息量。
+    """
+    # 先按 '_' 拆
+    parts = [p for p in name.split("_") if p]
+
+    # 每个部分再按驼峰拆
+    all_words = []
+    for p in parts:
+        all_words.extend(_split_camel(p))
+
+    translated = []
+    for w in all_words:
+        low = w.lower()
+        if w in IDENTIFIER_WORDS:
+            translated.append(IDENTIFIER_WORDS[w])
+        elif low in IDENTIFIER_WORDS:
+            translated.append(IDENTIFIER_WORDS[low])
+        else:
+            translated.append(w)   # 未命中的词原样保留
+    return "_".join(translated)
 
 
 def _translate_name(name: str) -> str:
