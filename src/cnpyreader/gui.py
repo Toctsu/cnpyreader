@@ -42,8 +42,7 @@ class CodeEditor(QsciScintilla):
         # 折叠栏。PyQt6 的 QScintilla 没导出 FoldMargin 枚举，
         # 但 setFolding 只吃 margin 编号，不吃枚举。
         # 直接给 margin 2 挂折叠：
-        self.setMarginWidth(2, 14)
-        self.setFolding(QsciScintilla.FoldStyle.PlainFoldStyle, 2)
+        self.setMarginWidth(2, 0)   # 折叠栏关掉
 
         # 两侧都挂 lexer：它是唯一能可靠控制文本字体的途径。
         # 但只有左侧（use_lexer=True）才配置语法高亮颜色。
@@ -142,6 +141,8 @@ class CodeEditor(QsciScintilla):
         fg = QColor(settings.get("editor_fg", "#ABB2BF"))
         margin_bg = QColor(settings.get("margin_bg", "#353B47"))
         margin_fg = QColor(settings.get("margin_fg", "#D0D4DC"))
+        fold_bg = QColor(settings.get("fold_bg", margin_bg.name()))
+        fold_fg = QColor(settings.get("fold_fg", "#5C6370"))
         sel_bg = QColor("#3E4451")
 
         # ---- 字体 ----
@@ -197,17 +198,38 @@ class CodeEditor(QsciScintilla):
         self.setIndicatorForegroundColor(fill, self._fill_indicator)
         self.setIndicatorForegroundColor(text, self._text_indicator)
 
-        # ---- 行号栏（放在最后，保证不被覆盖）----
+        # ---- 行号栏（margin 0）：用 margin_bg / margin_fg ----
         self.setMarginsBackgroundColor(margin_bg)
         self.setMarginsForegroundColor(margin_fg)
-        # 折叠栏背景也设成同一色（覆盖之前残留的棕色）
-        self.setFoldMarginColors(margin_bg, margin_bg)
-        # 符号栏、折叠栏的底层背景也统一刷一遍
-        for i in range(5):
+
+        # ---- 折叠栏（margin 2）：用 fold_bg / fold_fg ----
+        # setFoldMarginColors(前景/线色, 背景色)
+        self.setFoldMarginColors(fold_fg, fold_bg)
+
+        # 逐个 margin 刷底层背景，防止宽度 0 的 margin 露边：
+        #   margin 0 行号栏 → margin_bg
+        #   margin 1 符号栏 → margin_bg
+        #   margin 2 折叠栏 → fold_bg
+        #   margin 3/4      → margin_bg
+        self.SendScintilla(
+            QsciScintilla.SCI_SETMARGINBACKN, 0,
+            margin_bg.rgb() & 0xFFFFFF,
+        )
+        self.SendScintilla(
+            QsciScintilla.SCI_SETMARGINBACKN, 1,
+            margin_bg.rgb() & 0xFFFFFF,
+        )
+        self.SendScintilla(
+            QsciScintilla.SCI_SETMARGINBACKN, 2,
+            fold_bg.rgb() & 0xFFFFFF,
+        )
+        for i in (3, 4):
             self.SendScintilla(
                 QsciScintilla.SCI_SETMARGINBACKN, i,
                 margin_bg.rgb() & 0xFFFFFF,
             )
+
+        # 行号文字走 STYLE_LINENUMBER
         style_ln = getattr(QsciScintilla, "STYLE_LINENUMBER", 33)
         self.SendScintilla(
             QsciScintilla.SCI_STYLESETFORE, style_ln,
@@ -224,9 +246,26 @@ class CodeEditor(QsciScintilla):
         pal.setColor(QPalette.ColorRole.Window, bg)
         self.setPalette(pal)
 
+        print("margin_bg =", margin_bg.name(),
+              "margin_fg =", margin_fg.name(),
+              "fold_bg =", fold_bg.name(),
+              "style_ln back =",
+              QColor(self.SendScintilla(
+                  QsciScintilla.SCI_STYLEGETBACK, style_ln)).name())
+
+
+        # 控件最外层边框（红框那条）：用 QSS 设成编辑器底色
+        self.setStyleSheet(f"""
+            QsciScintilla {{
+                background-color: {bg.name()};
+                border: none;
+            }}
+        """)
+
         self.recolor()
-        self.update()
-        
+        self    .update()
+
+      
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -512,12 +551,20 @@ class SettingsDialog(QDialog):
         # 颜色选择按钮：点击弹出取色器
         self.bg_btn = self._make_color_button("editor_bg")
         self.fg_btn = self._make_color_button("editor_fg")
+        self.margin_bg_btn = self._make_color_button("margin_bg")
+        self.margin_fg_btn = self._make_color_button("margin_fg")
+        self.fold_bg_btn = self._make_color_button("fold_bg")
+        self.fold_fg_btn = self._make_color_button("fold_fg")
         self.fill_btn = self._make_color_button("highlight_fill")
         self.text_btn = self._make_color_button("highlight_text")
         self.zebra_color_btn = self._make_color_button("zebra_color")
 
         form.addRow("编辑器背景", self.bg_btn)
         form.addRow("编辑器文字", self.fg_btn)
+        form.addRow("行号栏背景", self.margin_bg_btn)
+        form.addRow("行号栏文字", self.margin_fg_btn)
+        form.addRow("折叠栏背景", self.fold_bg_btn)
+        form.addRow("折叠栏符号", self.fold_fg_btn)
         form.addRow("高亮填充色", self.fill_btn)
         form.addRow("高亮文字色", self.text_btn)
         form.addRow("奇偶行浅色", self.zebra_color_btn)
@@ -638,6 +685,10 @@ class SettingsDialog(QDialog):
         self._set_color_button("highlight_fill", self.fill_btn, d["highlight_fill"])
         self._set_color_button("highlight_text", self.text_btn, d["highlight_text"])
         self._set_color_button("zebra_color", self.zebra_color_btn, d["zebra_color"])
+        self._set_color_button("margin_bg", self.margin_bg_btn, d["margin_bg"])
+        self._set_color_button("margin_fg", self.margin_fg_btn, d["margin_fg"])
+        self._set_color_button("fold_bg", self.fold_bg_btn, d["fold_bg"])
+        self._set_color_button("fold_fg", self.fold_fg_btn, d["fold_fg"])
 
         # 字体、字号
         self._select_combo(self.font_combo, d["font_family"])

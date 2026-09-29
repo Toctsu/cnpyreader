@@ -10,8 +10,10 @@ CONFIG_FILE = CONFIG_DIR / "settings.json"
 DEFAULTS = {
     "editor_bg": "#282C34",         # 编辑器背景色
     "editor_fg": "#ABB2BF",         # 编辑器默认文字色
-    "margin_bg": "#768299",         # 行号栏背景（比编辑器亮一档，有区分）
+    "margin_bg": "#2C313A",         # 行号栏背景（比编辑器亮一档，有区分）
     "margin_fg": "#5b657a",         # 行号栏数字颜色（浅灰白）
+    "fold_bg":   "#768299",         # 折叠栏背景（默认跟行号栏一致）
+    "fold_fg":   "#5C6370",         # 折叠栏符号/线颜色
     "highlight_fill": "#2C3E50",    # 联动高亮：填充底色
     "highlight_text": "#5DADE2",    # 联动高亮：文字色
     "zebra_stripes": False,         # 是否启用奇偶行交替底色
