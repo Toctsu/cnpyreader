@@ -53,3 +53,16 @@ cnpyreader 把自己包装成一个 **MCP server**，任何支持 MCP 的模型�
   ],
   "total_lines": 6
 }
+```
+## 已知问题
+
+某些 MCP 客户端（如 Cherry Studio）在长时间会话或重启后，
+可能出现“显示已连接但工具不可调用”的状态不同步问题。
+
+特征：客户端 UI 显示 `cnpyreader` 已连接，但模型调用任何工具
+都返回 `unknown tool`。此时检查 `~/.cnpyreader/mcp.log`，
+如果只有 `MCP server 启动`、没有任何工具调用记录，说明
+客户端根本没连上，问题在客户端侧。
+
+遇到时：**完全退出并重启客户端**（不只是关窗口）。
+这不是 cnpyreader 的 bug。
