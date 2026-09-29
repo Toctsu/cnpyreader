@@ -33,7 +33,13 @@ def translate_code_tool(source: str, direction: str = "to_chinese") -> str:
 
 @mcp.tool()
 def get_structure_tool(source: str) -> dict:
-    """解析 Python 源码，返回类、函数、导入的结构树 JSON。"""
+    """解析 Python 源码，返回递归结构树。
+
+    推荐工作流：大段代码不要直接丢给 translate_code_tool。
+    先调本工具拿到结构树，再挑出关心的节点，
+    用 get_snippet_tool 只取那几行，最后翻那几行。
+    这样能显著减少 token 消耗。
+    """
     return get_structure(source)
 
 
