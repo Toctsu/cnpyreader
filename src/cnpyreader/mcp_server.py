@@ -12,7 +12,7 @@
 
 from mcp.server.mcpserver import MCPServer
 
-from .tools import translate_code, get_structure, translate_symbol
+from .tools import translate_code, get_structure, translate_symbol, get_snippet
 
 mcp = MCPServer("cnpyreader")
 
@@ -38,9 +38,13 @@ def get_structure_tool(source: str) -> dict:
 
 
 @mcp.tool()
-def translate_symbol_tool(name: str) -> str:
-    """翻译单个标识符或关键字，返回中文名。未命中则原样返回。"""
-    return translate_symbol(name)
+def get_snippet_tool(source: str, start: int, end: int) -> str:
+    """按行号取一段源码（1-based，包含 start 和 end）。
+
+    典型用法：先调 get_structure_tool 拿到结构树，
+    再对关心的节点调本工具，只取那几行，避免读整份代码。
+    """
+    return get_snippet(source, start, end)
 
 
 def main():

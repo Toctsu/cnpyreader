@@ -30,15 +30,51 @@ def translate_code(source: str, direction: str = "to_chinese") -> str:
     raise ValueError(f"未知方向: {direction}")
 
 
-def get_structure(source: str) -> dict:
-    """解析 Python 源码，返回结构树。
-
-    返回形如：
-    {
-      "classes": [{"name": "A", "line": 1, "methods": [...]}],
-      "functions": [{"name": "f", "line": 10, "args": ["x", "y"]}],
-      "imports": [{"module": "os", "line": 1}],
+def _node_to_dict(node: ast.AST) -> dict:
+    """把一个 AST 节点转成结构字典（递归）。"""
+    result = {
+        "name": getattr(node, "name", None),
+        "line_start": node.lineno,
+        "line_end": getattr(node, "end_lineno", node.lineno),
+        "type": type(node).__name__,
     }
+
+    # 参数（函数才有）
+    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        result["args"] = [a.arg for a in node.args.args]
+        result["is_async"] = isinstance(node, ast.AsyncFunctionDef)
+
+    # 子节点
+    children = []
+    for child in ast.iter_child_nodes(node):
+        if isinstance(child, (ast.ClassDef, ast.FunctionDef,
+                              ast.AsyncFunctionDef)):
+            children.append(_node_to_dict(child))
+        elif isinstance(child, (ast.If, ast.For, ast.While,
+                                 ast.Try, ast.With)):
+            # 控制流节点也暴露出来，但不递归进它的子函数
+            children.append({
+                "name": None,
+                "line_start": child.lineno,
+                "line_end": getattr(child, "end_lineno", child.lineno),
+                "type": type(child).__name__,
+            })
+    if children:
+        result["children"] = children
+
+    return result
+
+
+def get_structure(source: str) -> dict:
+    """解析 Python 源码，返回递归结构树。
+
+    每个节点包含：
+      - name: 类名 / 函数名（控制流节点为 None）
+      - type: 节点类型，如 ClassDef / FunctionDef / If / For / While
+      - line_start / line_end: 起止行号（1-based）
+      - args: 函数参数（仅函数）
+      - is_async: 是否异步函数（仅函数）
+      - children: 子节点列表
 
     解析失败时返回 {"error": "..."}。
     """
@@ -47,34 +83,46 @@ def get_structure(source: str) -> dict:
     except SyntaxError as e:
         return {"error": f"语法错误: {e}"}
 
-    classes = []
-    functions = []
     imports = []
+    top_level = []
 
     for node in tree.body:
-        if isinstance(node, ast.ClassDef):
-            classes.append({
-                "name": node.name,
-                "line": node.lineno,
-                "methods": [m.name for m in node.body
-                            if isinstance(m, ast.FunctionDef)],
-            })
-        elif isinstance(node, ast.FunctionDef):
-            functions.append({
-                "name": node.name,
-                "line": node.lineno,
-                "args": [a.arg for a in node.args.args],
-            })
-        elif isinstance(node, ast.Import):
+        if isinstance(node, ast.Import):
             for alias in node.names:
                 imports.append({"module": alias.name, "line": node.lineno})
         elif isinstance(node, ast.ImportFrom):
-            imports.append({
-                "module": node.module or "",
-                "line": node.lineno,
+            imports.append({"module": node.module or "", "line": node.lineno})
+        elif isinstance(node, (ast.ClassDef, ast.FunctionDef,
+                               ast.AsyncFunctionDef)):
+            top_level.append(_node_to_dict(node))
+        elif isinstance(node, (ast.If, ast.For, ast.While,
+                               ast.Try, ast.With)):
+            top_level.append({
+                "name": None,
+                "line_start": node.lineno,
+                "line_end": getattr(node, "end_lineno", node.lineno),
+                "type": type(node).__name__,
             })
 
-    return {"classes": classes, "functions": functions, "imports": imports}
+    return {
+        "imports": imports,
+        "top_level": top_level,
+        "total_lines": len(source.splitlines()),
+    }
+
+
+def get_snippet(source: str, start: int, end: int) -> str:
+    """按行号取一段源码（1-based，包含 start 和 end）。
+
+    用于模型按结构树取片段，避免读整份代码。
+    """
+    lines = source.splitlines()
+    # 容错：越界就夹紧
+    start = max(1, start)
+    end = min(len(lines), end)
+    if start > end:
+        return ""
+    return "\n".join(lines[start - 1:end])
 
 
 def translate_symbol(name: str) -> str:
